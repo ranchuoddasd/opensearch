@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>DXCON Inventory Dashboard</title>
+  <style>
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 8px;
+      border: 1px solid #ddd;
+      text-align: left;
+    }
+    th {
+      background-color: #f2f2f2;
+    }
+  </style>
+</head>
+<body>
+  <h1>DXCON Inventory Dashboard</h1>
+  <div>
+    <label>Select Dates for Comparison: </label>
+    <input type="date" id="startDate">
+    <input type="date" id="endDate">
+    <button onclick="compareDates()">Compare</button>
+  </div>
+
+  <table id="dxconTable">
+    <thead>
+      <tr>
+        <th>Account Owner</th>
+        <th>DXGW ID</th>
+        <th>DXVIFs ID</th>
+        <th>Associated CIDR</th>
+        <th>Region</th>
+        <th>VG ID</th>
+        <th>AWS ASN</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- Data will be populated here dynamically -->
+    </tbody>
+  </table>
+
+  <script>
+    async function fetchData(date) {
+      const response = await fetch(`/api/getDxconData?date=${date}`); // Backend endpoint
+      return await response.json();
+    }
+
+    function populateTable(data) {
+      const tbody = document.getElementById('dxconTable').getElementsByTagName('tbody')[0];
+      tbody.innerHTML = '';
+      data.forEach(item => {
+        const row = tbody.insertRow();
+        row.innerHTML = `
+          <td>${item.account_owner}</td>
+          <td>${item.dxgw_id}</td>
+          <td>${item.dxvifs_id}</td>
+          <td>${item.cidr}</td>
+          <td>${item.region}</td>
+          <td>${item.vg_id}</td>
+          <td>${item.aws_asn}</td>
+        `;
+      });
+    }
+
+    async function compareDates() {
+      const start = document.getElementById('startDate').value;
+      const end = document.getElementById('endDate').value;
+
+      if (!start || !end) return alert('Please select both dates.');
+
+      const [startData, endData] = await Promise.all([fetchData(start), fetchData(end)]);
+
+      const startIds = new Set(startData.map(item => item.dxgw_id));
+      const endIds = new Set(endData.map(item => item.dxgw_id));
+
+      const added = endData.filter(item => !startIds.has(item.dxgw_id));
+      const removed = startData.filter(item => !endIds.has(item.dxgw_id));
+
+      alert(`Added: ${added.length} | Removed: ${removed.length}`);
+
+      populateTable(endData); // Show latest as default
+    }
+
+    // Run daily fetch on page load
+    (async () => {
+      const today = new Date().toISOString().split('T')[0];
+      const data = await fetchData(today);
+      populateTable(data);
+    })();
+  </script>
+</body>
+</html>
