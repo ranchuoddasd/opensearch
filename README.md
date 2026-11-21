@@ -34,9 +34,13 @@ Use mock values for demonstrations. Do not commit real account identifiers, CIDR
 
 ### Version 1 — Date-based inventory comparison
 
+File: `inventory_compare_v1.html`
+
 The first HTML prototype requests inventory snapshots by date from an external backend endpoint, compares gateway identifiers, and displays the selected snapshot.
 
 ### Version 2 — OpenSearch-backed inventory concept
+
+File: `inventory_compare_v2.html`
 
 The second HTML prototype queries a configured OpenSearch index, displays inventory fields, and compares records across two selected dates.
 
