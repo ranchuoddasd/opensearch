@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sky Inventory Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background-color: #f2f2f2; }
+    .comparison { margin-top: 20px; }
+    button { padding: 10px; margin: 5px; }
+  </style>
+</head>
+<body>
+  <h1>Sky Inventory Dashboard</h1>
+  <button onclick="fetchData()">Fetch Latest Data</button>
+  <div>
+    <h3>Compare Data Between Dates</h3>
+    <label for="date1">Date 1:</label>
+    <input type="date" id="date1" value="2025-03-01">
+    <label for="date2">Date 2:</label>
+    <input type="date" id="date2" value="2025-03-02">
+    <button onclick="compareData()">Compare</button>
+  </div>
+  <table id="inventoryTable">
+    <thead>
+      <tr>
+        <th>Account Owner</th>
+        <th>DXGW ID</th>
+        <th>DXVIFS ID</th>
+        <th>Associated CIDR</th>
+        <th>Region</th>
+        <th>VG ID</th>
+        <th>ASN</th>
+        <th>Timestamp</th>
+      </tr>
+    </thead>
+    <tbody id="inventoryBody"></tbody>
+  </table>
+  <div class="comparison" id="comparisonResult"></div>
+
+  <script>
+    // Function to fetch data from OpenSearch
+    async function fetchData() {
+      const response = await fetch('https://<your-opensearch-domain>:9200/sky_inventory/_search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: { match_all: {} },
+          size: 1000,
+          _source: ["account_owner", "dxgw_id", "dxvifs_id", "associated_cidr", "region", "vg_id", "asn", "timestamp"]
+        })
+      });
+      const data = await response.json();
+      displayData(data.hits.hits);
+    }
+
+    // Function to display data in the table
+    function displayData(hits) {
+      const tbody = document.getElementById('inventoryBody');
+      tbody.innerHTML = '';
+      hits.forEach(hit => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${hit._source.account_owner || 'N/A'}</td>
+          <td>${hit._source.dxgw_id || 'N/A'}</td>
+          <td>${hit._source.dxvifs_id || 'N/A'}</td>
+          <td>${hit._source.associated_cidr || 'N/A'}</td>
+          <td>${hit._source.region || 'N/A'}</td>
+          <td>${hit._source.vg_id || 'N/A'}</td>
+          <td>${hit._source.asn || 'N/A'}</td>
+          <td>${hit._source.timestamp || 'N/A'}</td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+
+    // Function to compare data between two dates
+    async function compareData() {
+      const date1 = document.getElementById('date1').value;
+      const date2 = document.getElementById('date2').value;
+      const query1 = {
+        query: {
+          bool: {
+            filter: [
+              { range: { timestamp: { gte: date1, lte: date1 } } }
+            ]
+          }
+        },
+        size: 1000,
+        _source: ["account_owner", "dxgw_id", "dxvifs_id", "associated_cidr", "region", "vg_id", "asn", "timestamp"]
+      };
+      const query2 = { ...query1, query: { bool: { filter: [{ range: { timestamp: { gte: date2, lte: date2 } } }] } } };
+
+      const [data1, data2] = await Promise.all([
+        fetch('https://<your-opensearch-domain>:9200/sky_inventory/_search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(query1)
+        }).then(res => res.json()),
+        fetch('https://<your-opensearch-domain>:9200/sky_inventory/_search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(query2)
+        }).then(res => res.json())
+      ]);
+
+      const differences = findDifferences(data1.hits.hits, data2.hits.hits);
+      displayDifferences(differences, date1, date2);
+    }
+
+    // Function to find differences between two datasets
+    function findDifferences(data1, data2) {
+      const differences = { added: [], removed: [] };
+      const data1Map = new Map(data1.map(item => [item._source.dxgw_id, item._source]));
+      const data2Map = new Map(data2.map(item => [item._source.dxgw_id, item._source]));
+
+      // Find added items (in data2 but not in data1)
+      data2.forEach(item => {
+        if (!data1Map.has(item._source.dxgw_id)) {
+          differences.added.push(item._source);
+        }
+      });
+
+      // Find removed items (in data1 but not in data2)
+      data1.forEach(item => {
+        if (!data2Map.has(item._source.dxgw_id)) {
+          differences.removed.push(item._source);
+        }
+      });
+
+      return differences;
+    }
+
+    // Function to display differences
+    function displayDifferences(differences, date1, date2) {
+      const resultDiv = document.getElementById('comparisonResult');
+      resultDiv.innerHTML = `<h3>Differences Between ${date1} and ${date2}</h3>`;
+
+      if (differences.added.length > 0) {
+        resultDiv.innerHTML += `<h4>Added DXCONs:</h4><ul>`;
+        differences.added.forEach(item => {
+          resultDiv.innerHTML += `<li>DXGW ID: ${item.dxgw_id}, Account Owner: ${item.account_owner}</li>`;
+        });
+        resultDiv.innerHTML += `</ul>`;
+      }
+
+      if (differences.removed.length > 0) {
+        resultDiv.innerHTML += `<h4>Removed DXCONs:</h4><ul>`;
+        differences.removed.forEach(item => {
+          resultDiv.innerHTML += `<li>DXGW ID: ${item.dxgw_id}, Account Owner: ${item.account_owner}</li>`;
+        });
+        resultDiv.innerHTML += `</ul>`;
+      }
+
+      if (differences.added.length === 0 && differences.removed.length === 0) {
+        resultDiv.innerHTML += `<p>No differences found.</p>`;
+      }
+    }
+
+    // Schedule daily query (every 24 hours)
+    setInterval(fetchData, 24 * 60 * 60 * 1000); // 24 hours in milliseconds
+    fetchData(); // Initial fetch on page load
+  </script>
+</body>
+</html>
